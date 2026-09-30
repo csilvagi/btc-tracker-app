@@ -68,7 +68,7 @@ function guardarEstado() {
   // Sincroniza el saldo relevante (para que el cron job en la nube pueda
   // calcular los gatillos) definido en push-notifications.js, si está cargado.
   if (typeof window.sincronizarEstadoConSupabase === "function") {
-    window.sincronizarEstadoConSupabase(state.mp_btc_balance, goMiningTotalBalance());
+    window.sincronizarEstadoConSupabase(state.mp_btc_balance, goMiningTotalBalance(), state.precio_venta_mp);
   }
 }
 

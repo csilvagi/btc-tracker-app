@@ -111,8 +111,8 @@ async function main() {
   console.log(`[${new Date().toISOString()}] Iniciando revisión de gatillos...`);
 
   const [btcUsd, usdClp] = await Promise.all([obtenerPrecioBtcUsd(), obtenerUsdClp()]);
-  const precioVentaMp = btcUsd * usdClp;
-  console.log(`BTC/USD: $${btcUsd} | USD/CLP: $${usdClp} | Precio implícito MP: $${Math.round(precioVentaMp).toLocaleString("es-CL")} CLP`);
+  const precioMercado = btcUsd * usdClp;
+  console.log(`BTC/USD: $${btcUsd} | USD/CLP: $${usdClp} | Precio de mercado (auto): $${Math.round(precioMercado).toLocaleString("es-CL")} CLP`);
 
   const { data: row, error } = await supabase
     .from("btc_tracker_state")
@@ -125,6 +125,17 @@ async function main() {
     console.log("Sin token FCM registrado todavía (la app no se ha abierto/registrado en este dispositivo). Nada que notificar.");
     return;
   }
+
+  // Igual que en el frontend (precioEfectivo()): si hay un precio manual
+  // guardado, ese manda sobre el de mercado, para que el cron notifique
+  // en base a lo mismo que el usuario ve en el dashboard.
+  const precioManual = row.precio_venta_manual != null ? Number(row.precio_venta_manual) : null;
+  const precioVentaMp = precioManual ?? precioMercado;
+  console.log(
+    precioManual
+      ? `Usando precio MANUAL guardado: $${Math.round(precioManual).toLocaleString("es-CL")} CLP`
+      : `Sin precio manual: usando el de mercado.`
+  );
 
   const gatillos = evaluarGatillos(precioVentaMp, Number(row.mp_btc_balance));
   const lastNotified = row.last_notified || {};
