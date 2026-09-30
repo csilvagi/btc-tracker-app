@@ -177,17 +177,25 @@
 
     <div class="card">
       <h2>Precio de referencia</h2>
+      <div id="precioMercadoBox" style="background:var(--surface-2); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="muted">Precio de mercado (auto)</span>
+          <span id="precioMercadoValor" style="font-weight:600;">—</span>
+        </div>
+        <p class="muted" id="precioMercadoActualizadoHace" style="margin:4px 0 0; font-size:11px;"></p>
+      </div>
       <div class="row">
         <div>
-          <label>Precio venta MP (CLP/BTC)</label>
-          <input type="number" id="inPrecioVenta" placeholder="ej: 78000000" />
+          <label>Precio venta MP manual (CLP/BTC)</label>
+          <input type="number" id="inPrecioVenta" placeholder="Déjalo vacío para usar el de mercado" />
         </div>
         <div>
           <label>Dólar (USD/CLP)</label>
           <input type="number" id="inUsdClp" placeholder="ej: 950" />
         </div>
       </div>
-      <button class="primary" id="btnGuardarPrecio">Actualizar precio</button>
+      <button class="primary" id="btnGuardarPrecio">Guardar precio manual</button>
+      <button class="secondary" id="btnLimpiarPrecio">Quitar precio manual (volver a usar el de mercado)</button>
       <p class="muted" id="precioActualizadoHace" style="margin-top:8px;"></p>
     </div>
   </section>

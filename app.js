@@ -27,6 +27,11 @@ function estadoInicial() {
     usd_clp: null,
     precio_actualizado_en: null,
 
+    // Precio de mercado obtenido automáticamente (CoinGecko + mindicador.cl),
+    // usado como referencia/fallback cuando no hay precio manual ingresado.
+    precio_mercado_referencia: null,
+    precio_mercado_actualizado_en: null,
+
     compras: [
       // Se precarga como una única posición-resumen del ground truth.
       // Compras nuevas se agregan como filas independientes.
@@ -65,6 +70,47 @@ function guardarEstado() {
   if (typeof window.sincronizarEstadoConSupabase === "function") {
     window.sincronizarEstadoConSupabase(state.mp_btc_balance, goMiningTotalBalance());
   }
+}
+
+/* ==========================================================================
+   PRECIO DE MERCADO DE REFERENCIA (automático, fallback cuando no hay
+   precio manual ingresado). Fuente: CoinGecko (BTC/USD) + mindicador.cl (USD/CLP).
+   No es el precio real de Mercado Pago (que tiene su propio spread), solo
+   una referencia de mercado para no dejar la app "ciega" sin ingreso manual.
+   ========================================================================== */
+async function actualizarPrecioMercado() {
+  try {
+    const [btcRes, clpRes] = await Promise.all([
+      fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"),
+      fetch("https://mindicador.cl/api/dolar"),
+    ]);
+    if (!btcRes.ok || !clpRes.ok) throw new Error("Respuesta no OK de alguna API de precios.");
+
+    const btcData = await btcRes.json();
+    const clpData = await clpRes.json();
+    const btcUsd = btcData?.bitcoin?.usd;
+    const usdClp = clpData?.serie?.[0]?.valor;
+
+    if (!btcUsd || !usdClp) throw new Error("Datos incompletos en la respuesta.");
+
+    state.precio_mercado_referencia = btcUsd * usdClp;
+    state.precio_mercado_actualizado_en = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); // guarda sin re-sincronizar saldo
+    render();
+  } catch (err) {
+    console.warn("No se pudo actualizar el precio de mercado de referencia:", err);
+  }
+}
+
+/**
+ * Precio a usar en todos los cálculos: el manual si existe, si no el de
+ * mercado (referencia), si no null.
+ */
+function precioEfectivo() {
+  return state.precio_venta_mp ?? state.precio_mercado_referencia ?? null;
+}
+function precioEsManual() {
+  return state.precio_venta_mp !== null && state.precio_venta_mp !== undefined;
 }
 
 /* -------------------- UTILIDADES DE FORMATO -------------------- */
@@ -198,7 +244,7 @@ const GATILLO_ENTRADA_CLP = 45_000_000;
 const BONO_MAYO_2027_CLP = 1_000_000;
 
 function definicionesGatillos() {
-  const precio = state.precio_venta_mp;
+  const precio = precioEfectivo();
   const yaEjecutado2 = state.gatillos_ejecutados.some((g) => g.id === "gatillo2");
   const yaEjecutado3 = state.gatillos_ejecutados.some((g) => g.id === "gatillo3");
 
@@ -273,7 +319,7 @@ function ejecutarGatillo(id) {
     fecha: new Date().toISOString(),
     btc_vendido: g.btcVender,
     efectivo_recibido: g.efectivo,
-    precio_venta: state.precio_venta_mp,
+    precio_venta: precioEfectivo(),
   });
 
   guardarEstado();
@@ -287,7 +333,7 @@ function ejecutarGatillo(id) {
 function calcularTotales() {
   const goTotal = goMiningTotalBalance();
   const totalBtc = state.mp_btc_balance + goTotal;
-  const precio = state.precio_venta_mp;
+  const precio = precioEfectivo();
 
   const valorMpClp = precio ? state.mp_btc_balance * precio : null;
   const valorGoClp = precio ? goTotal * precio : null;
@@ -378,9 +424,16 @@ function renderDashboard() {
   // Precio guardado
   if (state.precio_venta_mp) document.getElementById("inPrecioVenta").value = state.precio_venta_mp;
   if (state.usd_clp) document.getElementById("inUsdClp").value = state.usd_clp;
-  document.getElementById("precioActualizadoHace").textContent = state.precio_actualizado_en
-    ? "Actualizado: " + new Date(state.precio_actualizado_en).toLocaleString("es-CL")
-    : "Ingresa el precio actual de venta en Mercado Pago para activar los cálculos.";
+  document.getElementById("precioActualizadoHace").textContent = precioEsManual()
+    ? "Usando precio MANUAL. Actualizado: " + new Date(state.precio_actualizado_en).toLocaleString("es-CL")
+    : "Usando precio de MERCADO (automático) porque no hay precio manual ingresado.";
+
+  document.getElementById("precioMercadoValor").textContent = state.precio_mercado_referencia
+    ? fmtCLP(state.precio_mercado_referencia)
+    : "Cargando...";
+  document.getElementById("precioMercadoActualizadoHace").textContent = state.precio_mercado_actualizado_en
+    ? "Actualizado: " + new Date(state.precio_mercado_actualizado_en).toLocaleString("es-CL") + " · BTC/USD × USD/CLP (no es el precio exacto de MP, que tiene su propio spread)"
+    : "Obteniendo precio de mercado...";
 }
 
 /* ==========================================================================
@@ -465,10 +518,10 @@ function renderGatillos() {
     });
   });
 
-  if (!state.precio_venta_mp) {
+  if (!precioEfectivo()) {
     cont.insertAdjacentHTML(
       "afterbegin",
-      '<div class="empty" style="padding-bottom:16px;">Ingresa el precio de venta en el Dashboard para activar el seguimiento de gatillos.</div>'
+      '<div class="empty" style="padding-bottom:16px;">Esperando el precio de mercado (automático) o ingresa uno manual en el Dashboard.</div>'
     );
   }
 }
@@ -477,7 +530,7 @@ function renderGatillos() {
    RENDER: HISTORIAL
    ========================================================================== */
 function renderHistorial() {
-  const precio = state.precio_venta_mp;
+  const precio = precioEfectivo();
   const tbody = document.getElementById("tablaHistorialBody");
   tbody.innerHTML = "";
 
@@ -571,7 +624,16 @@ document.getElementById("btnGuardarPrecio").addEventListener("click", () => {
   guardarEstado();
   render();
   checarProximidadGatillo2();
-  toast("Precio actualizado.");
+  toast("Precio manual guardado.");
+});
+
+document.getElementById("btnLimpiarPrecio").addEventListener("click", () => {
+  state.precio_venta_mp = null;
+  state.precio_actualizado_en = null;
+  document.getElementById("inPrecioVenta").value = "";
+  guardarEstado();
+  render();
+  toast("Precio manual quitado. Usando el de mercado.");
 });
 
 document.getElementById("btnRecalcularIntereses").addEventListener("click", () => {
@@ -684,12 +746,16 @@ function checarProximidadGatillo2() {
 /* -------------------- INICIALIZACIÓN -------------------- */
 actualizarInteresesGoMining();
 render();
+actualizarPrecioMercado();
 
 // Recalcular intereses automáticamente cada 5 minutos mientras la app está abierta
 setInterval(() => {
   actualizarInteresesGoMining();
   render();
 }, 5 * 60 * 1000);
+
+// Refrescar el precio de mercado cada 5 minutos también
+setInterval(actualizarPrecioMercado, 5 * 60 * 1000);
 
 // Fecha por defecto en el formulario de compra
 document.getElementById("inCompraFecha").value = new Date().toISOString().slice(0, 10);
