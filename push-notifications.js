@@ -38,14 +38,17 @@ async function inicializarNotificaciones() {
     if (token) {
       await subirTokenASupabase(token);
       toast("Notificaciones activadas.");
+    } else {
+      toast("No se obtuvo token FCM (revisa consola).");
     }
   } catch (err) {
     console.error("Error inicializando notificaciones push:", err);
+    toast("Error notificaciones: " + (err?.message || err));
   }
 }
 
 async function subirTokenASupabase(token) {
-  await fetch(`${SUPABASE_URL}/rest/v1/btc_tracker_state?id=eq.1`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/btc_tracker_state?id=eq.1`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -55,6 +58,10 @@ async function subirTokenASupabase(token) {
     },
     body: JSON.stringify({ fcm_token: token, updated_at: new Date().toISOString() }),
   });
+  if (!res.ok) {
+    const bodyText = await res.text().catch(() => "");
+    throw new Error(`Supabase PATCH falló (${res.status}): ${bodyText}`);
+  }
 }
 
 /**
