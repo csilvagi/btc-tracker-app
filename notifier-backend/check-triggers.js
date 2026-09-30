@@ -38,8 +38,21 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !FIREBASE_SERVICE_ACCOUNT_JSO
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+/**
+ * FIREBASE_SERVICE_ACCOUNT_JSON puede venir como JSON crudo o como base64
+ * (base64 es más seguro para pegar en GitHub Secrets: un salto de línea
+ * real colado en el JSON crudo lo rompe, base64 no tiene ese problema).
+ */
+function parseServiceAccount(raw) {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{")) {
+    return JSON.parse(trimmed);
+  }
+  return JSON.parse(Buffer.from(trimmed, "base64").toString("utf8"));
+}
+
 admin.initializeApp({
-  credential: admin.credential.cert(JSON.parse(FIREBASE_SERVICE_ACCOUNT_JSON)),
+  credential: admin.credential.cert(parseServiceAccount(FIREBASE_SERVICE_ACCOUNT_JSON)),
 });
 
 /* -------------------- FUENTES DE PRECIO -------------------- */
