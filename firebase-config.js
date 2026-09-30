@@ -24,6 +24,6 @@ const FIREBASE_VAPID_KEY = "TU_VAPID_KEY"; // falta: pestaña Cloud Messaging ->
  * Conexión a Supabase (ya está lista, no necesitas cambiar esto —
  * son las credenciales públicas del proyecto que ya desplegué).
  */
-const SUPABASE_URL = "https://dwevdycxbhmyxqssifwv.supabase.co";
+const SUPABASE_URL = "https://rhwgweovguvsrbqthrnr.supabase.co";
 const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3ZXZkeWN4YmhteXhxc3NpZnd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NzI5NzMsImV4cCI6MjA5OTU0ODk3M30.aMYnD89c2UsWGC0MFlER3Ws0_-uUrpNnGkB8bMDNP_Y";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJod2d3ZW92Z3V2c3JicXRocm5yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5NDU0NDgsImV4cCI6MjEwNTUyMTQ0OH0.xzftxy4bvDKPN1p1hjJLdkMoZwAMZTYJf9BQyfiSIFA";

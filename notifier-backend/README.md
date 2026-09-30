@@ -14,7 +14,7 @@ Cron job que corre en Render. Cada vez que se ejecuta:
 
 | Variable | De dónde sale |
 |---|---|
-| `SUPABASE_URL` | `https://dwevdycxbhmyxqssifwv.supabase.co` |
+| `SUPABASE_URL` | `https://rhwgweovguvsrbqthrnr.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → `service_role` key (secreta, NO la `anon`) |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase Console → ⚙️ Configuración → Cuentas de servicio → Generar nueva clave privada → pega el contenido completo del `.json` descargado como valor de esta variable |
 

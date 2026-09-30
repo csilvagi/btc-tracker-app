@@ -23,6 +23,6 @@ jobs:
 
       - run: node check-triggers.js
         env:
-          SUPABASE_URL: "https://dwevdycxbhmyxqssifwv.supabase.co"
+          SUPABASE_URL: "https://rhwgweovguvsrbqthrnr.supabase.co"
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
