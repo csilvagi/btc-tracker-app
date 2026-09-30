@@ -18,7 +18,7 @@ const FIREBASE_CONFIG = {
   appId: "1:1016507017245:web:fd7bf9a35343d5664c7ef4",
 };
 
-const FIREBASE_VAPID_KEY = "TU_VAPID_KEY"; // falta: pestaña Cloud Messaging -> Web Push certificates
+const FIREBASE_VAPID_KEY = "BPETEmp4jRgho0brYAlqs5caVMSYiZ4fF9e0ol_gJRtt8hJGMRW_I-M_9sSL_IrDdOgx8LWWusOW79fvFu_DHkM";
 
 /**
  * Conexión a Supabase (ya está lista, no necesitas cambiar esto —
