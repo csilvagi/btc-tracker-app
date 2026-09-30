@@ -1,0 +1,18 @@
+{
+  "name": "btc-tracker-notifier",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cron job: revisa el precio de BTC y envia notificaciones push (FCM) cuando se cumple un gatillo del Bitcoin DCA & Cycle Tracker.",
+  "main": "check-triggers.js",
+  "scripts": {
+    "start": "node check-triggers.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "firebase-admin": "^12.5.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

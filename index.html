@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Bitcoin DCA & Cycle Tracker</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0f0f12" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --surface: #15181c;
+    --surface-2: #1c2025;
+    --border: #262b31;
+    --text: #e8eaed;
+    --text-muted: #8b9199;
+    --orange: #f7931a;
+    --orange-dim: #f7931a33;
+    --green: #10b981;
+    --green-dim: #10b98122;
+    --red: #ef4444;
+    --red-dim: #ef444422;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: 72px;
+  }
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(11,13,16,0.92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  header h1 { font-size: 16px; margin: 0; display:flex; align-items:center; gap:8px; }
+  header h1 .dot { width:8px; height:8px; border-radius:50%; background:var(--orange); }
+  header button { background:none; border:1px solid var(--border); color:var(--text-muted); border-radius:8px; padding:6px 10px; font-size:12px; }
+
+  main { max-width: 720px; margin: 0 auto; padding: 16px; }
+  .tabs {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
+    background: var(--surface); border-top: 1px solid var(--border);
+    display: flex; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    max-width: 720px; margin: 0 auto;
+  }
+  @media (min-width: 720px) { .tabs { left:50%; transform: translateX(-50%); } }
+  .tab-btn {
+    flex: 1; background: none; border: none; color: var(--text-muted);
+    font-size: 11px; padding: 8px 4px; border-radius: 10px; display:flex; flex-direction:column; align-items:center; gap:2px;
+  }
+  .tab-btn.active { color: var(--orange); background: var(--orange-dim); }
+  .tab-btn svg { width:20px; height:20px; }
+
+  .section { display: none; animation: fade .15s ease; }
+  .section.active { display: block; }
+  @keyframes fade { from { opacity:0 } to { opacity:1 } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px; margin-bottom: 12px;
+  }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin: 0 0 12px; }
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .kpi { background: var(--surface-2); border-radius: 12px; padding: 12px; }
+  .kpi .label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .kpi .value { font-size: 18px; font-weight: 600; }
+  .kpi .sub { font-size: 11px; margin-top: 2px; }
+  .pos { color: var(--green); } .neg { color: var(--red); }
+
+  .progress-track { background: var(--surface-2); border-radius: 999px; height: 10px; overflow:hidden; margin-top:6px; }
+  .progress-fill { background: linear-gradient(90deg, var(--orange), #ffb74d); height: 100%; border-radius:999px; transition: width .3s; }
+
+  label { display:block; font-size:12px; color:var(--text-muted); margin: 10px 0 4px; }
+  input, select {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px 12px; font-size: 15px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--orange); }
+  button.primary {
+    width: 100%; background: var(--orange); color: #1a1200; font-weight: 600; border: none;
+    border-radius: 10px; padding: 12px; font-size: 14px; margin-top: 14px;
+  }
+  button.secondary {
+    width: 100%; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px; font-size: 13px; margin-top: 8px;
+  }
+  button.danger { color: var(--red); }
+
+  .trigger { border-radius: 12px; padding: 14px; margin-bottom: 10px; border: 1px solid var(--border); background: var(--surface-2); }
+  .trigger.hit { border-color: var(--green); background: var(--green-dim); }
+  .trigger.near { border-color: var(--orange); background: var(--orange-dim); }
+  .trigger .title { font-weight: 600; font-size: 14px; display:flex; justify-content:space-between; align-items:center; }
+  .trigger .desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height:1.5; }
+  .badge { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: var(--surface); border:1px solid var(--border); }
+  .badge.on { background: var(--green); color:#04150e; border-color: var(--green); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text-muted); font-weight: 500; font-size: 11px; }
+  .table-wrap { overflow-x: auto; margin: -4px; padding: 4px; }
+
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  .muted { color: var(--text-muted); font-size: 12px; }
+  .hr { height:1px; background:var(--border); margin:14px 0; }
+  .chip-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .chip { font-size:11px; background:var(--surface-2); border:1px solid var(--border); padding:4px 8px; border-radius:999px; color:var(--text-muted); }
+  .toast {
+    position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%);
+    background: var(--surface-2); border:1px solid var(--border); color: var(--text);
+    padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 50;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .toast.show { opacity: 1; }
+  .empty { text-align:center; color:var(--text-muted); font-size:13px; padding:24px 0; }
+  #donutWrap { max-width: 220px; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="dot"></span> BTC Tracker</h1>
+  <button id="btnExport">Exportar / Importar</button>
+</header>
+
+<main>
+
+  <!-- ================= DASHBOARD ================= -->
+  <section id="tab-dashboard" class="section active">
+    <div class="card">
+      <h2>Patrimonio</h2>
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="label">Patrimonio total consolidado</div>
+          <div class="value" id="kpiPatrimonio">$0</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Ganancia neta real</div>
+          <div class="value" id="kpiGanancia">$0</div>
+          <div class="sub" id="kpiGananciaPct">0%</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Satoshis totales</div>
+          <div class="value" id="kpiSats">0</div>
+          <div class="sub muted" id="kpiSatsSplit">MP · GoMining</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Capital neto en riesgo</div>
+          <div class="value" id="kpiRiesgo">$0</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        <div class="row" style="justify-content:space-between; font-size:12px; color:var(--text-muted);">
+          <span>Progreso a 1 BTC</span>
+          <span id="progresoPct">0%</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progresoFill" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Distribución del portafolio</h2>
+      <div id="donutWrap"><canvas id="donutChart"></canvas></div>
+      <div class="chip-row" style="justify-content:center;">
+        <span class="chip">🟠 Mercado Pago <span id="chipMp"></span></span>
+        <span class="chip">🟢 GoMining <span id="chipGo"></span></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Precio de referencia</h2>
+      <div class="row">
+        <div>
+          <label>Precio venta MP (CLP/BTC)</label>
+          <input type="number" id="inPrecioVenta" placeholder="ej: 78000000" />
+        </div>
+        <div>
+          <label>Dólar (USD/CLP)</label>
+          <input type="number" id="inUsdClp" placeholder="ej: 950" />
+        </div>
+      </div>
+      <button class="primary" id="btnGuardarPrecio">Actualizar precio</button>
+      <p class="muted" id="precioActualizadoHace" style="margin-top:8px;"></p>
+    </div>
+  </section>
+
+  <!-- ================= GOMINING ================= -->
+  <section id="tab-gomining" class="section">
+    <div class="card">
+      <h2>Motor GoMining</h2>
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="label">Base depósito</div>
+          <div class="value" id="goBase">0 BTC</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Balance total</div>
+          <div class="value" id="goTotal">0 BTC</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Intereses acumulados (3.03% APR)</div>
+          <div class="value" id="goIntereses">0 sats</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Minería acumulada</div>
+          <div class="value" id="goMineria">0 sats</div>
+        </div>
+      </div>
+      <p class="muted" id="goUltimaActualizacion" style="margin-top:10px;"></p>
+      <button class="secondary" id="btnRecalcularIntereses">Recalcular intereses ahora</button>
+    </div>
+
+    <div class="card">
+      <h2>Registrar minería semanal</h2>
+      <label>Satoshis minados esta semana</label>
+      <input type="number" id="inMineriaSats" placeholder="ej: 94" />
+      <button class="primary" id="btnRegistrarMineria">Agregar a GoMining</button>
+    </div>
+  </section>
+
+  <!-- ================= TRANSACCIONES ================= -->
+  <section id="tab-transacciones" class="section">
+    <div class="card">
+      <h2>Nueva compra DCA (Mercado Pago)</h2>
+      <label>Fecha</label>
+      <input type="date" id="inCompraFecha" />
+      <label>Monto (CLP)</label>
+      <input type="number" id="inCompraMonto" placeholder="ej: 10000" />
+      <label>BTC recibidos</label>
+      <input type="number" step="0.00000001" id="inCompraBtc" placeholder="ej: 0.00012133" />
+      <p class="muted" id="compraPrecioImplicito"></p>
+      <button class="primary" id="btnRegistrarCompra">Registrar compra</button>
+    </div>
+
+    <div class="card">
+      <h2>Retiro para gastos personales (MP)</h2>
+      <label>BTC retirados</label>
+      <input type="number" step="0.00000001" id="inRetiroBtc" placeholder="ej: 0.0005" />
+      <p class="muted" id="retiroPreview"></p>
+      <button class="primary danger" id="btnRegistrarRetiro" style="background:var(--surface-2); color:var(--red); border:1px solid var(--red);">Registrar retiro</button>
+    </div>
+  </section>
+
+  <!-- ================= GATILLOS ================= -->
+  <section id="tab-gatillos" class="section">
+    <div class="card">
+      <h2>Gatillos de venta y entrada</h2>
+      <div id="triggersList"></div>
+    </div>
+  </section>
+
+  <!-- ================= HISTORIAL ================= -->
+  <section id="tab-historial" class="section">
+    <div class="card">
+      <h2>Historial de compras</h2>
+      <div class="table-wrap">
+        <table id="tablaHistorial">
+          <thead>
+            <tr>
+              <th>Fecha</th><th>BTC orig.</th><th>BTC remanente</th><th>Inversión</th>
+              <th>Precio compra</th><th>Valor actual</th><th>G/P</th><th>Rend.</th>
+            </tr>
+          </thead>
+          <tbody id="tablaHistorialBody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="historialVacio" style="display:none;">Aún no registras compras.</div>
+    </div>
+
+    <div class="card">
+      <h2>Gatillos ejecutados</h2>
+      <div id="ejecutadosList"></div>
+      <div class="empty" id="ejecutadosVacio" style="display:none;">Ningún gatillo ejecutado todavía.</div>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="dashboard">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+    Dashboard
+  </button>
+  <button class="tab-btn" data-tab="gomining">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5a2.5 2.5 0 0 1 2.5-2.5h1a2.5 2.5 0 0 1 0 5h-1a2.5 2.5 0 0 0 0 5h1a2.5 2.5 0 0 0 2.5-2.5"/></svg>
+    GoMining
+  </button>
+  <button class="tab-btn" data-tab="transacciones">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+    Movs.
+  </button>
+  <button class="tab-btn" data-tab="gatillos">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+    Gatillos
+  </button>
+  <button class="tab-btn" data-tab="historial">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></svg>
+    Historial
+  </button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<input type="file" id="fileImport" accept="application/json" style="display:none;" />
+
+<script src="firebase-config.js"></script>
+<script src="push-notifications.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
