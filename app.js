@@ -437,6 +437,136 @@ function renderDashboard() {
 }
 
 /* ==========================================================================
+   GRAFICO: PRECIO BTC/USD (histórico, estilo Binance)
+   ========================================================================== */
+let precioChart = null;
+let rangoPrecioChartActual = 30; // días
+const CACHE_PRECIO_HISTORICO = {}; // { "1": {ts, data}, "7": {...}, ... }
+const CACHE_PRECIO_TTL_MS = 5 * 60 * 1000;
+
+async function obtenerHistoricoBtcUsd(dias) {
+  const cacheado = CACHE_PRECIO_HISTORICO[dias];
+  if (cacheado && Date.now() - cacheado.ts < CACHE_PRECIO_TTL_MS) {
+    return cacheado.data;
+  }
+  const url = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${dias}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`CoinGecko respondió ${res.status}`);
+  const json = await res.json();
+  const puntos = (json.prices || []).map(([ts, precio]) => ({ ts, precio }));
+  CACHE_PRECIO_HISTORICO[dias] = { ts: Date.now(), data: puntos };
+  return puntos;
+}
+
+function formatearEtiquetaTiempo(ts, dias) {
+  const d = new Date(ts);
+  if (dias <= 1) return d.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+  if (dias <= 30) return d.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit" });
+  return d.toLocaleDateString("es-CL", { month: "short", year: "2-digit" });
+}
+
+async function renderPrecioChart(dias = rangoPrecioChartActual) {
+  rangoPrecioChartActual = dias;
+
+  document.querySelectorAll("#rangoPrecioChart .chip-toggle").forEach((btn) => {
+    btn.classList.toggle("active", Number(btn.dataset.rango) === dias);
+  });
+
+  const canvas = document.getElementById("precioChart");
+  if (!canvas) return;
+
+  let puntos;
+  try {
+    puntos = await obtenerHistoricoBtcUsd(dias);
+  } catch (err) {
+    console.warn("No se pudo obtener el histórico de precio BTC/USD:", err);
+    document.getElementById("precioChartNota").textContent =
+      "No se pudo cargar el histórico (CoinGecko no respondió). Reintenta en unos minutos.";
+    return;
+  }
+
+  if (!puntos || puntos.length === 0) return;
+
+  const primero = puntos[0].precio;
+  const ultimo = puntos[puntos.length - 1].precio;
+  const variacionPct = ((ultimo - primero) / primero) * 100;
+  const subio = variacionPct >= 0;
+
+  document.getElementById("precioChartActual").textContent =
+    "$" + ultimo.toLocaleString("en-US", { maximumFractionDigits: 0 }) + " USD";
+  const elVariacion = document.getElementById("precioChartVariacion");
+  elVariacion.textContent = (subio ? "▲ " : "▼ ") + Math.abs(variacionPct).toFixed(2) + "%";
+  elVariacion.style.color = subio ? "var(--green)" : "var(--red)";
+
+  document.getElementById("precioChartNota").textContent =
+    "Datos: CoinGecko (BTC/USD) · actualizado " + new Date().toLocaleTimeString("es-CL");
+
+  const labels = puntos.map((p) => formatearEtiquetaTiempo(p.ts, dias));
+  const valores = puntos.map((p) => p.precio);
+
+  const ctx = canvas.getContext("2d");
+  const gradiente = ctx.createLinearGradient(0, 0, 0, 200);
+  if (subio) {
+    gradiente.addColorStop(0, "#10b98155");
+    gradiente.addColorStop(1, "#10b98100");
+  } else {
+    gradiente.addColorStop(0, "#ef444455");
+    gradiente.addColorStop(1, "#ef444400");
+  }
+
+  if (precioChart) precioChart.destroy();
+  precioChart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          data: valores,
+          borderColor: subio ? "#10b981" : "#ef4444",
+          backgroundColor: gradiente,
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0.25,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: {
+          ticks: { maxTicksLimit: 6, color: "#8b9199", font: { size: 10 } },
+          grid: { display: false },
+        },
+        y: {
+          ticks: {
+            color: "#8b9199",
+            font: { size: 10 },
+            callback: (v) => "$" + Number(v).toLocaleString("en-US", { maximumFractionDigits: 0 }),
+          },
+          grid: { color: "#262b31" },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => "$" + Number(ctx.parsed.y).toLocaleString("en-US", { maximumFractionDigits: 0 }) + " USD",
+          },
+        },
+      },
+    },
+  });
+}
+
+document.querySelectorAll("#rangoPrecioChart .chip-toggle").forEach((btn) => {
+  btn.addEventListener("click", () => renderPrecioChart(Number(btn.dataset.rango)));
+});
+
+/* ==========================================================================
    RENDER: GOMINING
    ========================================================================== */
 function renderGoMining() {
@@ -756,6 +886,10 @@ setInterval(() => {
 
 // Refrescar el precio de mercado cada 5 minutos también
 setInterval(actualizarPrecioMercado, 5 * 60 * 1000);
+
+// Gráfico de precio BTC/USD (histórico), con refresco cada 5 minutos
+renderPrecioChart();
+setInterval(() => renderPrecioChart(), 5 * 60 * 1000);
 
 // Fecha por defecto en el formulario de compra
 document.getElementById("inCompraFecha").value = new Date().toISOString().slice(0, 10);

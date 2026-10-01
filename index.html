@@ -113,6 +113,8 @@
   .hr { height:1px; background:var(--border); margin:14px 0; }
   .chip-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
   .chip { font-size:11px; background:var(--surface-2); border:1px solid var(--border); padding:4px 8px; border-radius:999px; color:var(--text-muted); }
+  .chip-toggle { cursor:pointer; background:transparent; }
+  .chip-toggle.active { background:var(--orange); border-color:var(--orange); color:#111; font-weight:600; }
   .toast {
     position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%);
     background: var(--surface-2); border:1px solid var(--border); color: var(--text);
@@ -173,6 +175,26 @@
         <span class="chip">🟠 Mercado Pago <span id="chipMp"></span></span>
         <span class="chip">🟢 GoMining <span id="chipGo"></span></span>
       </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <h2 style="margin:0;">Precio BTC/USD</h2>
+        <div class="chip-row" id="rangoPrecioChart" style="margin:0;">
+          <button class="chip chip-toggle" data-rango="1">24h</button>
+          <button class="chip chip-toggle" data-rango="7">7d</button>
+          <button class="chip chip-toggle active" data-rango="30">30d</button>
+          <button class="chip chip-toggle" data-rango="365">1a</button>
+        </div>
+      </div>
+      <div style="display:flex; align-items:baseline; gap:8px; margin:10px 0;">
+        <span id="precioChartActual" style="font-size:22px; font-weight:700;">—</span>
+        <span id="precioChartVariacion" class="muted" style="font-size:13px;"></span>
+      </div>
+      <div style="position:relative; height:200px;">
+        <canvas id="precioChart"></canvas>
+      </div>
+      <p class="muted" id="precioChartNota" style="margin-top:6px; font-size:11px;">Datos: CoinGecko (BTC/USD)</p>
     </div>
 
     <div class="card">
