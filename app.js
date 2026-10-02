@@ -46,6 +46,15 @@ function estadoInicial() {
     ],
 
     gatillos_ejecutados: [],
+
+    // Gatillos configurables por el usuario (reemplaza las constantes fijas).
+    // tipo: "venta" (vende un % del saldo MP cuando precio >= precio_clp)
+    //       "alerta_baja" (solo notifica, sin venta, cuando precio < precio_clp)
+    gatillos_custom: [
+      { id: "gatillo2", tipo: "venta", nombre: "Gatillo 2 — Activo y próximo", precio_clp: 84_000_000, pct: 0.15 },
+      { id: "gatillo3", tipo: "venta", nombre: "Gatillo 3 — Hito 100k USD", precio_clp: 93_400_000, pct: 0.20 },
+      { id: "gatillo_entrada", tipo: "alerta_baja", nombre: "Gatillo de entrada — Bono mayo 2027", precio_clp: 45_000_000, pct: null },
+    ],
   };
 }
 
@@ -68,7 +77,12 @@ function guardarEstado() {
   // Sincroniza el saldo relevante (para que el cron job en la nube pueda
   // calcular los gatillos) definido en push-notifications.js, si está cargado.
   if (typeof window.sincronizarEstadoConSupabase === "function") {
-    window.sincronizarEstadoConSupabase(state.mp_btc_balance, goMiningTotalBalance(), state.precio_venta_mp);
+    window.sincronizarEstadoConSupabase(
+      state.mp_btc_balance,
+      goMiningTotalBalance(),
+      state.precio_venta_mp,
+      state.gatillos_custom
+    );
   }
 }
 
@@ -236,66 +250,71 @@ function registrarRetiroMP(btcRetirados) {
 /* ==========================================================================
    MÓDULO 4: GATILLOS DE PRECIO
    ========================================================================== */
-const GATILLO_2_CLP = 84_000_000;
-const GATILLO_2_PCT = 0.15;
-const GATILLO_3_CLP = 93_400_000;
-const GATILLO_3_PCT = 0.20;
-const GATILLO_ENTRADA_CLP = 45_000_000;
-const BONO_MAYO_2027_CLP = 1_000_000;
-
 function definicionesGatillos() {
   const precio = precioEfectivo();
-  const yaEjecutado2 = state.gatillos_ejecutados.some((g) => g.id === "gatillo2");
-  const yaEjecutado3 = state.gatillos_ejecutados.some((g) => g.id === "gatillo3");
 
-  const btcVenderG2 = state.mp_btc_balance * GATILLO_2_PCT;
-  const efectivoG2 = precio ? btcVenderG2 * precio : null;
+  return state.gatillos_custom.map((cfg) => {
+    const yaEjecutado = state.gatillos_ejecutados.some((g) => g.id === cfg.id);
 
-  const btcVenderG3 = state.mp_btc_balance * GATILLO_3_PCT;
-  const efectivoG3 = precio ? btcVenderG3 * precio : null;
+    if (cfg.tipo === "venta") {
+      const btcVender = state.mp_btc_balance * cfg.pct;
+      const efectivo = precio ? btcVender * precio : null;
+      let distancia = null;
+      if (precio) distancia = ((cfg.precio_clp - precio) / precio) * 100;
+      const cumplido = precio !== null && precio >= cfg.precio_clp;
 
-  let distanciaG2 = null;
-  if (precio) distanciaG2 = ((GATILLO_2_CLP - precio) / precio) * 100;
+      return {
+        id: cfg.id,
+        nombre: cfg.nombre,
+        tipo: cfg.tipo,
+        condicionTexto: `Precio venta MP ≥ ${fmtCLP(cfg.precio_clp)}`,
+        cumplido,
+        cerca: !yaEjecutado && !cumplido && distancia !== null && distancia <= 1.0 && distancia > 0,
+        ejecutado: yaEjecutado,
+        accionTexto: `Vender ${(cfg.pct * 100).toFixed(0)}% del saldo MP: ${fmtBTC(btcVender)} → ${efectivo !== null ? fmtCLP(efectivo) : "—"}`,
+        distancia,
+        btcVender,
+        efectivo,
+        ejecutable: !yaEjecutado && cumplido,
+      };
+    }
 
-  return [
-    {
-      id: "gatillo2",
-      nombre: "Gatillo 2 — Activo y próximo",
-      condicionTexto: `Precio venta MP ≥ ${fmtCLP(GATILLO_2_CLP)} (~$90.000 USD)`,
-      cumplido: precio !== null && precio >= GATILLO_2_CLP,
-      cerca: precio !== null && distanciaG2 !== null && distanciaG2 <= 1.0 && distanciaG2 > 0,
-      ejecutado: yaEjecutado2,
-      accionTexto: `Vender ${(GATILLO_2_PCT * 100).toFixed(0)}% del saldo MP: ${fmtBTC(btcVenderG2)} → ${fmtCLP(efectivoG2)}`,
-      distancia: distanciaG2,
-      btcVender: btcVenderG2,
-      efectivo: efectivoG2,
-      ejecutable: !yaEjecutado2 && precio !== null && precio >= GATILLO_2_CLP,
-    },
-    {
-      id: "gatillo3",
-      nombre: "Gatillo 3 — Hito 100k USD",
-      condicionTexto: `Precio venta MP ≥ ${fmtCLP(GATILLO_3_CLP)} (~$100.000 USD)`,
-      cumplido: precio !== null && precio >= GATILLO_3_CLP,
-      cerca: false,
-      ejecutado: yaEjecutado3,
-      accionTexto: `Vender ${(GATILLO_3_PCT * 100).toFixed(0)}% del remanente MP: ${fmtBTC(btcVenderG3)} → ${fmtCLP(efectivoG3)}`,
-      distancia: null,
-      btcVender: btcVenderG3,
-      efectivo: efectivoG3,
-      ejecutable: !yaEjecutado3 && precio !== null && precio >= GATILLO_3_CLP,
-    },
-    {
-      id: "gatillo_entrada",
-      nombre: "Gatillo de entrada — Bono mayo 2027",
-      condicionTexto: `Alerta si precio venta MP cae bajo ${fmtCLP(GATILLO_ENTRADA_CLP)} (~$42k–$46k USD)`,
-      cumplido: precio !== null && precio < GATILLO_ENTRADA_CLP,
+    // alerta_baja: solo notifica, no ejecuta venta
+    const cumplido = precio !== null && precio < cfg.precio_clp;
+    return {
+      id: cfg.id,
+      nombre: cfg.nombre,
+      tipo: cfg.tipo,
+      condicionTexto: `Alerta si precio venta MP cae bajo ${fmtCLP(cfg.precio_clp)}`,
+      cumplido,
       cerca: false,
       ejecutado: false,
-      accionTexto: `Desplegar liquidez del bono (${fmtCLP(BONO_MAYO_2027_CLP)}) en compras escalonadas.`,
+      accionTexto: `Zona de entrada: considera desplegar liquidez en compras escalonadas.`,
       distancia: null,
       noEjecutable: true,
-    },
-  ];
+    };
+  });
+}
+
+function agregarGatillo({ nombre, tipo, precioClp, pct }) {
+  if (!nombre || !tipo || !precioClp || precioClp <= 0) return false;
+  if (tipo === "venta" && (!pct || pct <= 0 || pct > 1)) return false;
+
+  const id = "g_" + Date.now().toString(36);
+  state.gatillos_custom.push({
+    id,
+    tipo,
+    nombre,
+    precio_clp: precioClp,
+    pct: tipo === "venta" ? pct : null,
+  });
+  guardarEstado();
+  return true;
+}
+
+function eliminarGatillo(id) {
+  state.gatillos_custom = state.gatillos_custom.filter((g) => g.id !== id);
+  guardarEstado();
 }
 
 function ejecutarGatillo(id) {
@@ -576,6 +595,16 @@ function renderGoMining() {
   document.getElementById("goMineria").textContent = fmtSats(state.gomining_mineria_acumulada);
   document.getElementById("goUltimaActualizacion").textContent =
     "Última actualización de intereses: " + new Date(state.gomining_last_update).toLocaleString("es-CL");
+
+  // Placeholders con los valores actuales (dejar vacío = no cambiar ese campo)
+  document.getElementById("inGoBaseCorreccion").placeholder = state.gomining_base_deposit.toFixed(8);
+  document.getElementById("inGoAprCorreccion").placeholder = (state.gomining_apr * 100).toString();
+  document.getElementById("inGoInteresesCorreccion").placeholder = Math.round(
+    state.gomining_intereses_acumulados * SATS_POR_BTC
+  ).toString();
+  document.getElementById("inGoMineriaCorreccion").placeholder = Math.round(
+    state.gomining_mineria_acumulada * SATS_POR_BTC
+  ).toString();
 }
 
 /* ==========================================================================
@@ -635,7 +664,10 @@ function renderGatillos() {
       <div class="title">${g.nombre} ${badge}</div>
       <div class="desc">${g.condicionTexto}<br/>${g.accionTexto}</div>
       ${distanciaTxt}
-      ${btnHtml}
+      <div class="row" style="margin-top:8px; gap:8px;">
+        ${btnHtml}
+        <button class="secondary" data-eliminar="${g.id}" style="font-size:12px;">Eliminar gatillo</button>
+      </div>
     `;
     cont.appendChild(div);
   }
@@ -648,12 +680,47 @@ function renderGatillos() {
     });
   });
 
+  cont.querySelectorAll("[data-eliminar]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (confirm("¿Eliminar este gatillo? Ya no se evaluará ni notificará.")) {
+        eliminarGatillo(btn.dataset.eliminar);
+        renderGatillos();
+      }
+    });
+  });
+
   if (!precioEfectivo()) {
     cont.insertAdjacentHTML(
       "afterbegin",
       '<div class="empty" style="padding-bottom:16px;">Esperando el precio de mercado (automático) o ingresa uno manual en el Dashboard.</div>'
     );
   }
+}
+
+/* -------------------- FORMULARIO: NUEVO GATILLO -------------------- */
+function actualizarFormNuevoGatillo() {
+  const tipo = document.getElementById("inGatilloTipo").value;
+  document.getElementById("campoGatilloPct").style.display = tipo === "venta" ? "" : "none";
+}
+
+function manejarAgregarGatillo() {
+  const nombre = document.getElementById("inGatilloNombre").value.trim();
+  const tipo = document.getElementById("inGatilloTipo").value;
+  const precioClp = parseFloat(document.getElementById("inGatilloPrecio").value);
+  const pctInput = parseFloat(document.getElementById("inGatilloPct").value);
+  const pct = pctInput > 0 ? pctInput / 100 : null;
+
+  const ok = agregarGatillo({ nombre, tipo, precioClp, pct });
+  if (!ok) {
+    toast("Revisa los datos: falta nombre, precio válido o % de venta (1-100).");
+    return;
+  }
+
+  document.getElementById("inGatilloNombre").value = "";
+  document.getElementById("inGatilloPrecio").value = "";
+  document.getElementById("inGatilloPct").value = "";
+  toast("Gatillo agregado.");
+  renderGatillos();
 }
 
 /* ==========================================================================
@@ -771,6 +838,26 @@ document.getElementById("btnRecalcularIntereses").addEventListener("click", () =
   render();
   toast("Intereses recalculados.");
 });
+
+document.getElementById("btnCorregirGoMining").addEventListener("click", () => {
+  const base = parseFloat(document.getElementById("inGoBaseCorreccion").value);
+  const aprPct = parseFloat(document.getElementById("inGoAprCorreccion").value);
+  const interesesSats = parseFloat(document.getElementById("inGoInteresesCorreccion").value);
+  const mineriaSats = parseFloat(document.getElementById("inGoMineriaCorreccion").value);
+
+  if (base >= 0) state.gomining_base_deposit = base;
+  if (aprPct >= 0) state.gomining_apr = aprPct / 100;
+  if (interesesSats >= 0) state.gomining_intereses_acumulados = interesesSats / SATS_POR_BTC;
+  if (mineriaSats >= 0) state.gomining_mineria_acumulada = mineriaSats / SATS_POR_BTC;
+  state.gomining_last_update = new Date().toISOString();
+
+  guardarEstado();
+  render();
+  toast("Valores de GoMining corregidos.");
+});
+
+document.getElementById("inGatilloTipo").addEventListener("change", actualizarFormNuevoGatillo);
+document.getElementById("btnAgregarGatillo").addEventListener("click", manejarAgregarGatillo);
 
 document.getElementById("btnRegistrarMineria").addEventListener("click", () => {
   const sats = parseFloat(document.getElementById("inMineriaSats").value);
@@ -893,3 +980,6 @@ setInterval(() => renderPrecioChart(), 5 * 60 * 1000);
 
 // Fecha por defecto en el formulario de compra
 document.getElementById("inCompraFecha").value = new Date().toISOString().slice(0, 10);
+
+// Mostrar/ocultar el campo % según el tipo de gatillo seleccionado por defecto
+actualizarFormNuevoGatillo();

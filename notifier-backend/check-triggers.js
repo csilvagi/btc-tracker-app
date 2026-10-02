@@ -23,11 +23,13 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const FIREBASE_SERVICE_ACCOUNT_JSON = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 
-const GATILLO_2_CLP = 84_000_000;
-const GATILLO_2_PCT = 0.15;
-const GATILLO_3_CLP = 93_400_000;
-const GATILLO_3_PCT = 0.20;
-const GATILLO_ENTRADA_CLP = 45_000_000;
+// Gatillos por defecto, usados solo si el usuario aún no sincronizó ninguno
+// personalizado desde la app (fila sin gatillos_custom en Supabase).
+const GATILLOS_DEFAULT = [
+  { id: "gatillo2", tipo: "venta", nombre: "Gatillo 2", precio_clp: 84_000_000, pct: 0.15 },
+  { id: "gatillo3", tipo: "venta", nombre: "Gatillo 3 — hito 100k USD", precio_clp: 93_400_000, pct: 0.20 },
+  { id: "gatillo_entrada", tipo: "alerta_baja", nombre: "Zona de entrada — bono mayo 2027", precio_clp: 45_000_000, pct: null },
+];
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !FIREBASE_SERVICE_ACCOUNT_JSON) {
   console.error(
@@ -71,27 +73,29 @@ async function obtenerUsdClp() {
 }
 
 /* -------------------- LOGICA DE GATILLOS -------------------- */
-function evaluarGatillos(precioVentaMp, mpBtcBalance) {
-  const btcVenderG2 = mpBtcBalance * GATILLO_2_PCT;
-  const btcVenderG3 = mpBtcBalance * GATILLO_3_PCT;
+function evaluarGatillos(precioVentaMp, mpBtcBalance, gatillosCustom) {
+  const defs = Array.isArray(gatillosCustom) && gatillosCustom.length > 0 ? gatillosCustom : GATILLOS_DEFAULT;
+  const resultado = {};
 
-  return {
-    gatillo2: {
-      cumplido: precioVentaMp >= GATILLO_2_CLP,
-      titulo: "Gatillo 2 cumplido",
-      cuerpo: `Precio ≥ $${GATILLO_2_CLP.toLocaleString("es-CL")} CLP. Vende ${btcVenderG2.toFixed(8)} BTC (~$${Math.round(btcVenderG2 * precioVentaMp).toLocaleString("es-CL")} CLP).`,
-    },
-    gatillo3: {
-      cumplido: precioVentaMp >= GATILLO_3_CLP,
-      titulo: "Gatillo 3 cumplido — hito 100k USD",
-      cuerpo: `Precio ≥ $${GATILLO_3_CLP.toLocaleString("es-CL")} CLP. Vende ${btcVenderG3.toFixed(8)} BTC (~$${Math.round(btcVenderG3 * precioVentaMp).toLocaleString("es-CL")} CLP).`,
-    },
-    gatillo_entrada: {
-      cumplido: precioVentaMp < GATILLO_ENTRADA_CLP,
-      titulo: "Zona de entrada — bono mayo 2027",
-      cuerpo: `Precio bajo $${GATILLO_ENTRADA_CLP.toLocaleString("es-CL")} CLP. Considera desplegar el bono en compras escalonadas.`,
-    },
-  };
+  for (const cfg of defs) {
+    if (cfg.tipo === "venta") {
+      const btcVender = mpBtcBalance * cfg.pct;
+      resultado[cfg.id] = {
+        cumplido: precioVentaMp >= cfg.precio_clp,
+        titulo: `${cfg.nombre} cumplido`,
+        cuerpo: `Precio ≥ $${cfg.precio_clp.toLocaleString("es-CL")} CLP. Vende ${btcVender.toFixed(8)} BTC (~$${Math.round(btcVender * precioVentaMp).toLocaleString("es-CL")} CLP).`,
+      };
+    } else {
+      // alerta_baja
+      resultado[cfg.id] = {
+        cumplido: precioVentaMp < cfg.precio_clp,
+        titulo: cfg.nombre,
+        cuerpo: `Precio bajo $${cfg.precio_clp.toLocaleString("es-CL")} CLP. Zona de entrada.`,
+      };
+    }
+  }
+
+  return resultado;
 }
 
 /* -------------------- ENVIO DE PUSH -------------------- */
@@ -137,7 +141,7 @@ async function main() {
       : `Sin precio manual: usando el de mercado.`
   );
 
-  const gatillos = evaluarGatillos(precioVentaMp, Number(row.mp_btc_balance));
+  const gatillos = evaluarGatillos(precioVentaMp, Number(row.mp_btc_balance), row.gatillos_custom);
   const lastNotified = row.last_notified || {};
   const nuevoEstado = { ...lastNotified };
   let huboEnvios = false;

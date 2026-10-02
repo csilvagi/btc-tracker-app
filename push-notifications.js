@@ -69,7 +69,7 @@ async function subirTokenASupabase(token) {
  * "Debounced" con un pequeño timeout para no golpear la API en cada tecla.
  */
 let _syncTimeout = null;
-window.sincronizarEstadoConSupabase = function (mpBtcBalance, goMiningTotalBalance, precioVentaManual) {
+window.sincronizarEstadoConSupabase = function (mpBtcBalance, goMiningTotalBalance, precioVentaManual, gatillosCustom) {
   clearTimeout(_syncTimeout);
   _syncTimeout = setTimeout(async () => {
     try {
@@ -85,6 +85,7 @@ window.sincronizarEstadoConSupabase = function (mpBtcBalance, goMiningTotalBalan
           mp_btc_balance: mpBtcBalance,
           gomining_total_balance: goMiningTotalBalance,
           precio_venta_manual: precioVentaManual ?? null,
+          gatillos_custom: gatillosCustom ?? null,
           updated_at: new Date().toISOString(),
         }),
       });

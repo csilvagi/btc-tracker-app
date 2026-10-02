@@ -249,6 +249,32 @@
     </div>
 
     <div class="card">
+      <h2>Corregir valores de GoMining</h2>
+      <p class="muted" style="margin-top:-6px; margin-bottom:10px;">Deja vacío cualquier campo que no quieras cambiar.</p>
+      <div class="row">
+        <div>
+          <label>Base depósito (BTC)</label>
+          <input type="number" step="0.00000001" id="inGoBaseCorreccion" placeholder="ej: 0.00104909" />
+        </div>
+        <div>
+          <label>APR (%)</label>
+          <input type="number" step="0.01" id="inGoAprCorreccion" placeholder="ej: 3.03" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Intereses acumulados (sats)</label>
+          <input type="number" id="inGoInteresesCorreccion" placeholder="ej: 685" />
+        </div>
+        <div>
+          <label>Minería acumulada (sats)</label>
+          <input type="number" id="inGoMineriaCorreccion" placeholder="ej: 751" />
+        </div>
+      </div>
+      <button class="primary" id="btnCorregirGoMining">Guardar correcciones</button>
+    </div>
+
+    <div class="card">
       <h2>Registrar minería semanal</h2>
       <label>Satoshis minados esta semana</label>
       <input type="number" id="inMineriaSats" placeholder="ej: 94" />
@@ -281,6 +307,24 @@
 
   <!-- ================= GATILLOS ================= -->
   <section id="tab-gatillos" class="section">
+    <div class="card">
+      <h2>Agregar nuevo gatillo</h2>
+      <label>Nombre</label>
+      <input type="text" id="inGatilloNombre" placeholder="ej: Gatillo 4 — 120k USD" />
+      <label>Tipo</label>
+      <select id="inGatilloTipo">
+        <option value="venta">Venta (al superar un precio)</option>
+        <option value="alerta_baja">Alerta de entrada (al caer bajo un precio)</option>
+      </select>
+      <label>Precio gatillo (CLP/BTC)</label>
+      <input type="number" id="inGatilloPrecio" placeholder="ej: 105000000" />
+      <div id="campoGatilloPct">
+        <label>% del saldo MP a vender</label>
+        <input type="number" id="inGatilloPct" placeholder="ej: 20" />
+      </div>
+      <button class="primary" id="btnAgregarGatillo">Agregar gatillo</button>
+    </div>
+
     <div class="card">
       <h2>Gatillos de venta y entrada</h2>
       <div id="triggersList"></div>
