@@ -93,19 +93,35 @@ function guardarEstado() {
    una referencia de mercado para no dejar la app "ciega" sin ingreso manual.
    ========================================================================== */
 async function actualizarPrecioMercado() {
+  // Cada fuente se prueba en orden; la primera que responda con un valor válido gana.
+  const primera = async (fuentes) => {
+    for (const fn of fuentes) {
+      try {
+        const v = await fn();
+        if (typeof v === "number" && isFinite(v) && v > 0) return v;
+      } catch (_) { /* probar la siguiente fuente */ }
+    }
+    return null;
+  };
+  const getJson = async (url) => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  };
+
   try {
-    const [btcRes, clpRes] = await Promise.all([
-      fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"),
-      fetch("https://mindicador.cl/api/dolar"),
+    const [btcUsd, usdClp] = await Promise.all([
+      primera([
+        async () => (await getJson("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd")).bitcoin.usd,
+        async () => Number((await getJson("https://api.coinbase.com/v2/prices/BTC-USD/spot")).data.amount),
+      ]),
+      primera([
+        async () => (await getJson("https://mindicador.cl/api/dolar")).serie[0].valor,
+        async () => (await getJson("https://open.er-api.com/v6/latest/USD")).rates.CLP,
+      ]),
     ]);
-    if (!btcRes.ok || !clpRes.ok) throw new Error("Respuesta no OK de alguna API de precios.");
 
-    const btcData = await btcRes.json();
-    const clpData = await clpRes.json();
-    const btcUsd = btcData?.bitcoin?.usd;
-    const usdClp = clpData?.serie?.[0]?.valor;
-
-    if (!btcUsd || !usdClp) throw new Error("Datos incompletos en la respuesta.");
+    if (!btcUsd || !usdClp) throw new Error("Ninguna fuente de precios respondió.");
 
     state.precio_mercado_referencia = btcUsd * usdClp;
     state.precio_mercado_actualizado_en = new Date().toISOString();

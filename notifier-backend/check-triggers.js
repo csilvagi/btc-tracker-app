@@ -58,18 +58,77 @@ admin.initializeApp({
 });
 
 /* -------------------- FUENTES DE PRECIO -------------------- */
-async function obtenerPrecioBtcUsd() {
-  const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd");
-  if (!r.ok) throw new Error(`CoinGecko respondió ${r.status}`);
-  const data = await r.json();
-  return data.bitcoin.usd;
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+async function fetchJsonConReintentos(url, intentos = 3) {
+  let ultimoError;
+  for (let i = 1; i <= intentos; i++) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (err) {
+      ultimoError = err;
+      if (i < intentos) await sleep(2000 * i);
+    }
+  }
+  throw ultimoError;
 }
 
-async function obtenerUsdClp() {
-  const r = await fetch("https://mindicador.cl/api/dolar");
-  if (!r.ok) throw new Error(`mindicador.cl respondió ${r.status}`);
-  const data = await r.json();
-  return data.serie[0].valor;
+/** Prueba cada fuente en orden y devuelve el primer valor válido. */
+async function primeraFuenteValida(nombre, fuentes) {
+  const errores = [];
+  for (const { fuente, fn } of fuentes) {
+    try {
+      const valor = await fn();
+      if (typeof valor === "number" && isFinite(valor) && valor > 0) return valor;
+      throw new Error("valor inválido");
+    } catch (err) {
+      errores.push(`${fuente}: ${err.message}`);
+      console.warn(`[${nombre}] ${fuente} falló: ${err.message}`);
+    }
+  }
+  throw new Error(`Todas las fuentes de ${nombre} fallaron (${errores.join(" | ")})`);
+}
+
+function obtenerPrecioBtcUsd() {
+  return primeraFuenteValida("BTC/USD", [
+    {
+      fuente: "CoinGecko",
+      fn: async () =>
+        (await fetchJsonConReintentos("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd")).bitcoin.usd,
+    },
+    {
+      fuente: "Coinbase",
+      fn: async () =>
+        Number((await fetchJsonConReintentos("https://api.coinbase.com/v2/prices/BTC-USD/spot")).data.amount),
+    },
+  ]);
+}
+
+function obtenerUsdClp() {
+  return primeraFuenteValida("USD/CLP", [
+    {
+      fuente: "mindicador.cl",
+      fn: async () => (await fetchJsonConReintentos("https://mindicador.cl/api/dolar")).serie[0].valor,
+    },
+    {
+      fuente: "open.er-api.com",
+      fn: async () => (await fetchJsonConReintentos("https://open.er-api.com/v6/latest/USD")).rates.CLP,
+    },
+  ]);
+}
+
+/** Devuelve el precio de mercado en CLP, o null si no se pudo obtener. */
+async function obtenerPrecioMercadoClp() {
+  try {
+    const [btcUsd, usdClp] = await Promise.all([obtenerPrecioBtcUsd(), obtenerUsdClp()]);
+    console.log(`BTC/USD: $${btcUsd} | USD/CLP: $${usdClp}`);
+    return btcUsd * usdClp;
+  } catch (err) {
+    console.warn(`No se pudo obtener el precio de mercado: ${err.message}`);
+    return null;
+  }
 }
 
 /* -------------------- LOGICA DE GATILLOS -------------------- */
@@ -114,9 +173,10 @@ async function enviarNotificacion(fcmToken, titulo, cuerpo) {
 async function main() {
   console.log(`[${new Date().toISOString()}] Iniciando revisión de gatillos...`);
 
-  const [btcUsd, usdClp] = await Promise.all([obtenerPrecioBtcUsd(), obtenerUsdClp()]);
-  const precioMercado = btcUsd * usdClp;
-  console.log(`BTC/USD: $${btcUsd} | USD/CLP: $${usdClp} | Precio de mercado (auto): $${Math.round(precioMercado).toLocaleString("es-CL")} CLP`);
+  const precioMercado = await obtenerPrecioMercadoClp();
+  if (precioMercado !== null) {
+    console.log(`Precio de mercado (auto): $${Math.round(precioMercado).toLocaleString("es-CL")} CLP`);
+  }
 
   const { data: row, error } = await supabase
     .from("btc_tracker_state")
@@ -135,6 +195,10 @@ async function main() {
   // en base a lo mismo que el usuario ve en el dashboard.
   const precioManual = row.precio_venta_manual != null ? Number(row.precio_venta_manual) : null;
   const precioVentaMp = precioManual ?? precioMercado;
+  if (precioVentaMp === null) {
+    // Ninguna fuente respondió (tras reintentos y fuentes alternativas) y no hay precio manual.
+    throw new Error("Sin precio disponible: fallaron todas las fuentes de mercado y no hay precio manual.");
+  }
   console.log(
     precioManual
       ? `Usando precio MANUAL guardado: $${Math.round(precioManual).toLocaleString("es-CL")} CLP`
